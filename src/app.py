@@ -8,6 +8,14 @@ from flask_cors import CORS
 from utils import APIException, generate_sitemap
 from admin import setup_admin
 from models import db, User, Address, Planet, Character, Vehicle, Character_Favorite_List, Planet_Favorite_List, Vehicle_Favorite_List
+# from flask_bcrypt import Bcrypt  # para encriptar y comparar
+from flask_sqlalchemy import SQLAlchemy  # Para rutas
+# from flask_jwt_extended import  JWTManager, create_access_token, jwt_required, get_jwt_identity
+
+# app.config["JWT_SECRET_KEY"] = "valor-variable"  # clave secreta para firmar los tokens, cuanto mas largo mejor.
+# jwt = JWTManager(app)  # isntanciamos jwt de JWTManager utilizando app para tener las herramientas de encriptacion.
+# bcrypt = Bcrypt(app)   # para encriptar password
+
 
 app = Flask(__name__)
 app.url_map.strict_slashes = False
@@ -36,6 +44,17 @@ def sitemap():
 
 # ... (definiciones de las rutas para User)
 
+@app.route('/users', methods=['GET'])
+def get_all_users():
+    try:
+        users = User.query.all()
+        serialized_users = [user.serialize() for user in users]
+        return jsonify(users=serialized_users), 200
+
+    except Exception as e:
+        return jsonify({'error': 'Error retrieving users: ' + str(e)}), 500
+
+
 @app.route('/users/<int:user_id>', methods=['GET'])
 def get_user(user_id):
     user = User.query.get(user_id)
@@ -43,40 +62,101 @@ def get_user(user_id):
         return jsonify(message='User not found'), 404
     return jsonify(user.serialize())
 
-@app.route('/users', methods=['POST'])
+# ... (create user that works like a signup)
+
+@app.route('/signup', methods=['POST'])
 def create_user():
-    data = request.get_json()
-    username = data.get('username')
-    password = data.get('password')
-    name = data.get('name')
-    surname = data.get('surname')
-    phone_number = data.get('phone_number')
-    email = data.get('email')
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        password = data.get('password')
 
-    if not username or not password or not name or not surname or not phone_number or not email:
-        return jsonify(message='Missing required fields'), 400
+        if not email or not password:
+            return jsonify({'error': 'Email and password are required.'}), 400
 
-    address_data = data.get('address')
-    if not address_data:
-        return jsonify(message='Address is required'), 400
+        existing_user = User.query.filter_by(email=email).first()
+        if existing_user:
+            return jsonify({'error': 'Email already exists.'}), 409
 
-    street_name = address_data.get('street_name')
-    street_number = address_data.get('street_number')
-    postal_code = address_data.get('postal_code')
+        password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
 
-    if not street_name or not street_number or not postal_code:
-        return jsonify(message='Missing required fields for address'), 400
+        username = data.get('username')
+        name = data.get('name')
+        surname = data.get('surname')
+        phone_number = data.get('phone_number')
 
-    new_user = User(username=username, password=password, name=name, surname=surname,
-                    phone_number=phone_number, email=email)
-    new_address = Address(street_name=street_name, street_number=street_number, postal_code=postal_code)
-    new_user.address = new_address
+        if not username or not name or not surname or not phone_number:
+            return jsonify(message='Missing required fields'), 400
 
-    db.session.add(new_user)
-    db.session.commit()
+        address_data = data.get('address')
+        if not address_data:
+            return jsonify(message='Address is required'), 400
 
-    return jsonify(message='User created successfully', user=new_user.serialize()), 201
+        street_name = address_data.get('street_name')
+        street_number = address_data.get('street_number')
+        postal_code = address_data.get('postal_code')
 
+        if not street_name or not street_number or not postal_code:
+            return jsonify(message='Missing required fields for address'), 400
+
+        new_user = User(username=username, password=password_hash, name=name, surname=surname,
+                        phone_number=phone_number, email=email)
+        new_address = Address(street_name=street_name, street_number=street_number, postal_code=postal_code)
+        new_user.address = new_address
+
+        db.session.add(new_user)
+        db.session.commit()
+
+        return jsonify(message='User created successfully', user=new_user.serialize()), 201
+
+    except Exception as e:
+        return jsonify({'error': 'Error in user creation: ' + str(e)}), 500
+
+# ... (login route)
+
+
+@app.route('/login', methods=['POST'])
+def login():
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+
+        # Validate that the username and password are correct
+        if username == 'user' and password == 'password':
+            # Generate the token object (you can use a library like JWT)
+            token = 'generated_token'
+
+            # Save the token in sessionStorage
+            session['token'] = token
+
+            # Redirect to the /private route
+            return redirect('/private')
+        else:
+            return jsonify({'error': 'Invalid credentials'}), 401
+
+    except Exception as e:
+        return jsonify({'error': 'Error in login: ' + str(e)}), 500
+
+# ... (logout route)
+
+@app.route('/logout', methods=['POST'])
+@jwt_required()  # Requires authentication with a valid JWT token
+def logout():
+    unset_jwt_cookies()  # Remove JWT token from the client
+
+    return redirect('/')  # Redirect to the home page (public)
+
+# ... (Protected route)
+
+@app.route('/private', methods=['GET'])
+@jwt_required()  # Requires authentication with a valid JWT token
+def private_route():
+    current_user = get_jwt_identity()  # Get the user identity from the token
+
+    return jsonify(message='Hello, ' + current_user), 200
+
+# ... (otros métodos para users)
 
 @app.route('/users/<int:user_id>', methods=['PUT'])
 def update_user(user_id):
@@ -544,6 +624,8 @@ def delete_vehicle_favorite_list(favorite_list_id):
     if favorite_list:
         db.session.delete(favorite_list)
         db.session.commit()
+
+
 
 
 # this only runs if `$ python src/app.py` is executed
