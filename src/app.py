@@ -2,7 +2,7 @@
 This module takes care of starting the API Server, Loading the DB and Adding the endpoints
 """
 import os
-from flask import Flask, request, jsonify, redirect, 
+from flask import Flask, request, jsonify, redirect, session
 from flask_migrate import Migrate
 from flask_cors import CORS
 from utils import APIException, generate_sitemap
@@ -118,28 +118,65 @@ def create_user():
 
 # ... (login route)
 
-
 @app.route('/login', methods=['POST'])
 def login():
     try:
+        session = Session()
+
         data = request.get_json()
-        username = data.get('username')
+        email = data.get('email')
         password = data.get('password')
+        is_active = data.get('is_active')
 
+        if not email or not password:
+            return jsonify({'error': 'Email and password are required'}), 400
 
+        user = session.query(User).filter_by(email=email, password=password).first()
 
-        # Validate that the username and password are correct
-        if username == 'email' and password == 'password':
-            # Generate the token object (you can use a library like JWT)
+        if user and is_active:
             token = 'generated_token'
-
-            # Save the token in sessionStorage
             session['token'] = token
-
-            # Redirect to the /private route
-            return redirect('/private')
+            return redirect('/login') # va la ruta del formulario
         else:
-            return jsonify({'error': 'Invalid credentials'}), 401
+            return jsonify({'error': 'Invalid credentials or you must activate your user'}), 401
+
+    except Exception as e:
+        return jsonify({'error': 'Error in login: ' + str(e)}), 500
+
+
+
+# @app.route('/login', methods=['POST'])
+# def login():
+#     users = User.query.get(users)
+    
+#     try:
+#         data = request.get_json()
+#         email = data.get('email')
+#         password = data.get('password')
+#         is_active = data.get('is_active')
+
+#         if is_active is True: 
+#             token = 'generated_token'
+
+#             session['token'] = token 
+
+#             return redirect('/private')
+#         else:
+#             return jsonify({'error': 'Invalid credentials'}), 401
+
+
+        # # Validate that the username and password are correct
+        # if username == 'email' and password == 'password':
+        #     # Generate the token object (you can use a library like JWT)
+        #     token = 'generated_token'
+
+        #     # Save the token in sessionStorage
+        #     session['token'] = token
+
+        #     # Redirect to the /private route
+        #     return redirect('/private')
+        # else:
+        #     return jsonify({'error': 'Invalid credentials'}), 401
 
     except Exception as e:
         return jsonify({'error': 'Error in login: ' + str(e)}), 500
@@ -153,14 +190,43 @@ def logout():
 
     return redirect('/signup')  # Redirect to the home page (public)
 
-# ... (Protected route)
+# ... (Private route)
 
-@app.route('/private', methods=['GET'])
-@jwt_required()  # Requires authentication with a valid JWT token
-def private_route():
-    current_user = get_jwt_identity()  # Get the user identity from the token
+@app.route('/private')
+def private():
+    token = session.get('token')
+    if token:
+        # User is authenticated, perform private actions
+        return jsonify({'message': 'Welcome to the private area!'})
+    else:
+        return jsonify({'error': 'Unauthorized'}), 401
 
-    return jsonify(message='Hello, ' + current_user), 200
+# ... (token route)
+
+@app.route('/token', methods=['POST'])
+def get_token():
+    try:
+        email = request.json.get('email')
+        password = request.json.get('password')
+
+        if not email or not password:
+            return jsonify({'error': 'Email and password are required.'}), 400
+        
+        login_user = User.query.filter_by(email=request.json['email']).one()
+        password_db = login_user.password
+        true_o_false = bcrypt.check_password_hash(password_db, password)
+        
+        if true_o_false:
+            # Lógica para crear y enviar el token
+            user_id = login_user.id
+            access_token = create_access_token(identity=user_id)
+            return { 'access_token':access_token}, 200
+
+        else:
+            return {"Error":"Incorrect Password"}
+    
+    except Exception as e:
+        return {"Error":"Written email is not in the database:" + str(e)}, 500
 
 # ... (otros métodos para users)
 
