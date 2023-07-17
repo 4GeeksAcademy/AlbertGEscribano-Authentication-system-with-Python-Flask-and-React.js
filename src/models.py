@@ -4,19 +4,20 @@ db = SQLAlchemy()
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(250), nullable=False)
+    username = db.Column(db.String(250), nullable=True)
     password = db.Column(db.String(250), nullable=False)
-    name = db.Column(db.String(250), nullable=False)
-    surname = db.Column(db.String(250), nullable=False)
-    phone_number = db.Column(db.String(250), nullable=False)
+    name = db.Column(db.String(250), nullable=True)
+    surname = db.Column(db.String(250), nullable=True)
+    phone_number = db.Column(db.String(250), nullable=True)
     email = db.Column(db.String(250), nullable=False)
     addresses = db.relationship('Address', backref='user')
+    is_active = db.Column(db.Boolean, nullable=False)
 
     def __init__(self, **kwargs):
         super(User, self).__init__(**kwargs)
 
     def __repr__(self):
-        return '<User %r>' % self.username
+        return '<User %r>' % self.email
 
     def serialize(self):
         return {
@@ -27,6 +28,7 @@ class User(db.Model):
             "surname": self.surname,
             "phone_number": self.phone_number,
             "email": self.email,
+            "is_active" : self.is_active
         }
 
     def to_dict(self):

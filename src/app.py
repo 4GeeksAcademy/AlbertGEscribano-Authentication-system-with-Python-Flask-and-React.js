@@ -2,15 +2,16 @@
 This module takes care of starting the API Server, Loading the DB and Adding the endpoints
 """
 import os
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect, 
 from flask_migrate import Migrate
 from flask_cors import CORS
 from utils import APIException, generate_sitemap
 from admin import setup_admin
 from models import db, User, Address, Planet, Character, Vehicle, Character_Favorite_List, Planet_Favorite_List, Vehicle_Favorite_List
-# from flask_bcrypt import Bcrypt  # para encriptar y comparar
+
+from flask_bcrypt import Bcrypt  # para encriptar y comparar
 from flask_sqlalchemy import SQLAlchemy  # Para rutas
-# from flask_jwt_extended import  JWTManager, create_access_token, jwt_required, get_jwt_identity
+from flask_jwt_extended import  JWTManager, create_access_token, jwt_required, get_jwt_identity, unset_jwt_cookies
 
 # app.config["JWT_SECRET_KEY"] = "valor-variable"  # clave secreta para firmar los tokens, cuanto mas largo mejor.
 # jwt = JWTManager(app)  # isntanciamos jwt de JWTManager utilizando app para tener las herramientas de encriptacion.
@@ -18,6 +19,7 @@ from flask_sqlalchemy import SQLAlchemy  # Para rutas
 
 
 app = Flask(__name__)
+bcrypt = Bcrypt(app)
 app.url_map.strict_slashes = False
 
 db_url = os.getenv("DATABASE_URL")
@@ -75,34 +77,36 @@ def create_user():
             return jsonify({'error': 'Email and password are required.'}), 400
 
         existing_user = User.query.filter_by(email=email).first()
-        if existing_user:
+        if existing_user is not None:
             return jsonify({'error': 'Email already exists.'}), 409
 
         password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
 
-        username = data.get('username')
-        name = data.get('name')
-        surname = data.get('surname')
-        phone_number = data.get('phone_number')
+        # username = data.get('username')
+        # name = data.get('name')
+        # surname = data.get('surname')
+        # phone_number = data.get('phone_number')
 
-        if not username or not name or not surname or not phone_number:
-            return jsonify(message='Missing required fields'), 400
+        # if not username or not name or not surname or not phone_number:
+        #     return jsonify(message='Missing required fields'), 400
 
-        address_data = data.get('address')
-        if not address_data:
-            return jsonify(message='Address is required'), 400
+        # address_data = data.get('address')
+        # if not address_data:
+        #     return jsonify(message='Address is required'), 400
 
-        street_name = address_data.get('street_name')
-        street_number = address_data.get('street_number')
-        postal_code = address_data.get('postal_code')
+        # street_name = address_data.get('street_name')
+        # street_number = address_data.get('street_number')
+        # postal_code = address_data.get('postal_code')
 
-        if not street_name or not street_number or not postal_code:
-            return jsonify(message='Missing required fields for address'), 400
+        # if not street_name or not street_number or not postal_code:
+        #     return jsonify(message='Missing required fields for address'), 400
 
-        new_user = User(username=username, password=password_hash, name=name, surname=surname,
-                        phone_number=phone_number, email=email)
-        new_address = Address(street_name=street_name, street_number=street_number, postal_code=postal_code)
-        new_user.address = new_address
+        new_user = User(email=email, password=password_hash, is_active = False)
+        
+        # (username=username, password=password_hash, name=name, surname=surname,
+        #                 phone_number=phone_number, email=email)
+        # new_address = Address(street_name=street_name, street_number=street_number, postal_code=postal_code)
+        # new_user.address = new_address
 
         db.session.add(new_user)
         db.session.commit()
@@ -122,8 +126,10 @@ def login():
         username = data.get('username')
         password = data.get('password')
 
+
+
         # Validate that the username and password are correct
-        if username == 'user' and password == 'password':
+        if username == 'email' and password == 'password':
             # Generate the token object (you can use a library like JWT)
             token = 'generated_token'
 
@@ -145,7 +151,7 @@ def login():
 def logout():
     unset_jwt_cookies()  # Remove JWT token from the client
 
-    return redirect('/')  # Redirect to the home page (public)
+    return redirect('/signup')  # Redirect to the home page (public)
 
 # ... (Protected route)
 
