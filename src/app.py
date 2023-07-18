@@ -2,10 +2,10 @@
 This module takes care of starting the API Server, Loading the DB and Adding the endpoints
 """
 import os
-from flask import Flask, request, jsonify, redirect, session
+from flask import Flask, request, jsonify, redirect, session, url_for
 from flask_migrate import Migrate
 from flask_cors import CORS
-from utils import APIException, generate_sitemap
+from utils import APIException, generate_sitemap, generate_token
 from admin import setup_admin
 from models import db, User, Address, Planet, Character, Vehicle, Character_Favorite_List, Planet_Favorite_List, Vehicle_Favorite_List
 
@@ -14,13 +14,12 @@ from flask_sqlalchemy import SQLAlchemy  # Para rutas
 from flask_jwt_extended import  JWTManager, create_access_token, jwt_required, get_jwt_identity, unset_jwt_cookies
 
 # app.config["JWT_SECRET_KEY"] = "valor-variable"  # clave secreta para firmar los tokens, cuanto mas largo mejor.
-# jwt = JWTManager(app)  # isntanciamos jwt de JWTManager utilizando app para tener las herramientas de encriptacion.
-# bcrypt = Bcrypt(app)   # para encriptar password
 
 
 app = Flask(__name__)
 bcrypt = Bcrypt(app)
 app.url_map.strict_slashes = False
+jwt = JWTManager(app)  # isntanciamos jwt de JWTManager utilizando app para tener las herramientas de encriptacion.
 
 db_url = os.getenv("DATABASE_URL")
 if db_url is not None:
@@ -72,6 +71,7 @@ def create_user():
         data = request.get_json()
         email = data.get('email')
         password = data.get('password')
+        
 
         if not email or not password:
             return jsonify({'error': 'Email and password are required.'}), 400
@@ -121,62 +121,41 @@ def create_user():
 @app.route('/login', methods=['POST'])
 def login():
     try:
-        session = Session()
-
         data = request.get_json()
         email = data.get('email')
         password = data.get('password')
         is_active = data.get('is_active')
 
-        if not email or not password:
-            return jsonify({'error': 'Email and password are required'}), 400
-
-        user = session.query(User).filter_by(email=email, password=password).first()
-
-        if user and is_active:
-            token = 'generated_token'
-            session['token'] = token
-            return redirect('/login') # va la ruta del formulario
-        else:
-            return jsonify({'error': 'Invalid credentials or you must activate your user'}), 401
-
-    except Exception as e:
-        return jsonify({'error': 'Error in login: ' + str(e)}), 500
-
-
-
-# @app.route('/login', methods=['POST'])
-# def login():
-#     users = User.query.get(users)
+        # # Query the User model using the provided email
     
-#     try:
-#         data = request.get_json()
-#         email = data.get('email')
-#         password = data.get('password')
-#         is_active = data.get('is_active')
+        if not email or not password:
+            return jsonify({'error': 'Email and password are required.'}), 400
+        
+        login_user = User.query.filter_by(email=request.json['email']).one()
+        password_db = login_user.password
+        true_o_false = bcrypt.check_password_hash(password_db, password)
+        
+        if true_o_false:
+            # Lógica para crear y enviar el token
+            user_id = login_user.id
+            access_token = create_access_token(identity=user_id)
+            form_status = login_user.is_active 
+            return jsonify({ 'access_token':access_token, 'form_status':form_status}), 200
+        else:
+            return {"Error":"Contraseña  incorrecta"}
 
-#         if is_active is True: 
-#             token = 'generated_token'
+        # and user.password == password:
+        # and is_active:
+            # Generate the token object (e.g., using JWT library)
+            token = generate_token(user.id)
 
-#             session['token'] = token 
-
-#             return redirect('/private')
-#         else:
-#             return jsonify({'error': 'Invalid credentials'}), 401
-
-
-        # # Validate that the username and password are correct
-        # if username == 'email' and password == 'password':
-        #     # Generate the token object (you can use a library like JWT)
-        #     token = 'generated_token'
-
-        #     # Save the token in sessionStorage
+        #     # Save the token in the session
         #     session['token'] = token
 
-        #     # Redirect to the /private route
-        #     return redirect('/private')
+          
+        #     return redirect(url_for('/private'))
         # else:
-        #     return jsonify({'error': 'Invalid credentials'}), 401
+            # return jsonify({'error': 'Invalid credentials'}), 401
 
     except Exception as e:
         return jsonify({'error': 'Error in login: ' + str(e)}), 500
@@ -188,7 +167,7 @@ def login():
 def logout():
     unset_jwt_cookies()  # Remove JWT token from the client
 
-    return redirect('/signup')  # Redirect to the home page (public)
+    return redirect(url_for('/signup'))  # Redirect to the home page (public)
 
 # ... (Private route)
 

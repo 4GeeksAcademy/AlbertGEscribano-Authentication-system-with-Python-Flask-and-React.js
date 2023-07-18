@@ -1,4 +1,6 @@
 from flask import jsonify, url_for
+import jwt
+from datetime import datetime, timedelta
 
 class APIException(Exception):
     status_code = 400
@@ -39,3 +41,25 @@ def generate_sitemap(app):
         <p>Start working on your proyect by following the <a href="https://start.4geeksacademy.com/starters/flask" target="_blank">Quick Start</a></p>
         <p>Remember to specify a real endpoint path like: </p>
         <ul style="text-align: left;">"""+links_html+"</ul></div>"
+
+
+
+
+def generate_token(user_id):
+    # Define la clave secreta para firmar el token
+    secret_key = 'tu_clave_secreta_aqui'
+
+    # Define la fecha de expiración del token (por ejemplo, 1 hora desde ahora)
+    expiration_time = datetime.utcnow() + timedelta(hours=1)
+
+    # Crea el payload del token con el ID de usuario y la fecha de expiración
+    payload = {
+        'user_id': user_id,
+        'exp': expiration_time
+    }
+
+    # Genera el token utilizando la clave secreta y el algoritmo de firma
+    token = jwt.encode(payload, secret_key, algorithm='HS256')
+
+    # Devuelve el token generado
+    return token.decode('utf-8')
