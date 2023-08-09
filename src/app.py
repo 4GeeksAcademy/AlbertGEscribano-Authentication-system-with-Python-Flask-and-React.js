@@ -7,7 +7,7 @@ from flask_migrate import Migrate
 from flask_cors import CORS
 from utils import APIException, generate_sitemap, generate_token
 from admin import setup_admin
-from models import db, User, Address, Planet, Character, Vehicle, Character_Favorite_List, Planet_Favorite_List, Vehicle_Favorite_List
+from models import db, User, Planet, Character, Vehicle, Character_Favorite_List, Planet_Favorite_List, Vehicle_Favorite_List
 
 from flask_bcrypt import Bcrypt  # para encriptar y comparar
 from flask_sqlalchemy import SQLAlchemy  # Para rutas
@@ -82,32 +82,8 @@ def create_user():
 
         password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
 
-        # username = data.get('username')
-        # name = data.get('name')
-        # surname = data.get('surname')
-        # phone_number = data.get('phone_number')
-
-        # if not username or not name or not surname or not phone_number:
-        #     return jsonify(message='Missing required fields'), 400
-
-        # address_data = data.get('address')
-        # if not address_data:
-        #     return jsonify(message='Address is required'), 400
-
-        # street_name = address_data.get('street_name')
-        # street_number = address_data.get('street_number')
-        # postal_code = address_data.get('postal_code')
-
-        # if not street_name or not street_number or not postal_code:
-        #     return jsonify(message='Missing required fields for address'), 400
-
         new_user = User(email=email, password=password_hash, is_active = False)
         
-        # (username=username, password=password_hash, name=name, surname=surname,
-        #                 phone_number=phone_number, email=email)
-        # new_address = Address(street_name=street_name, street_number=street_number, postal_code=postal_code)
-        # new_user.address = new_address
-
         db.session.add(new_user)
         db.session.commit()
 
@@ -122,44 +98,27 @@ def create_user():
 def login():
     try:
         data = request.get_json()
-        email = data.get('email')
-        password = data.get('password')
-        is_active = data.get('is_active')
 
         # # Query the User model using the provided email
-    
-        if not email or not password:
+
+        if not data["email"] or not data["password"]:
             return jsonify({'error': 'Email and password are required.'}), 400
         
-        login_user = User.query.filter_by(email=request.json['email']).one()
-        password_db = login_user.password
-        true_o_false = bcrypt.check_password_hash(password_db, password)
+        login_user = User.query.filter_by(email=data['email']).first()
+        password_db = login_user.password  # Utilisez l'attribut "password" au lieu de "login_user["password"]"
+        true_or_false = bcrypt.check_password_hash(password_db, data["password"])
         
-        if true_o_false:
+        if true_or_false:
             # Lógica para crear y enviar el token
-            user_id = login_user.id
-            access_token = create_access_token(identity=user_id)
-            form_status = login_user.is_active 
-            return jsonify({ 'access_token':access_token, 'form_status':form_status}), 200
+            access_token = create_access_token(identity=login_user.id)  # Utilisez l'attribut "id" au lieu de "login_user["id"]"
+            form_status = login_user.is_active  # Utilisez l'attribut "is_active" au lieu de "login_user["is_active"]"
+            return jsonify({ 'access_token': access_token, 'form_status': form_status, "user": login_user.to_dict()}), 200
         else:
-            return {"Error":"Contraseña  incorrecta"}
-
-        # and user.password == password:
-        # and is_active:
-            # Generate the token object (e.g., using JWT library)
-            token = generate_token(user.id)
-
-        #     # Save the token in the session
-        #     session['token'] = token
-
-          
-        #     return redirect(url_for('/private'))
-        # else:
-            # return jsonify({'error': 'Invalid credentials'}), 401
+            return {"Error": "Incorrect password"}, 401
 
     except Exception as e:
         return jsonify({'error': 'Error in login: ' + str(e)}), 500
-
+    
 # ... (logout route)
 
 @app.route('/logout', methods=['POST'])
@@ -167,16 +126,20 @@ def login():
 def logout():
     unset_jwt_cookies()  # Remove JWT token from the client
 
-    return redirect(url_for('/signup'))  # Redirect to the home page (public)
+    return jsonify({"message" :  "Logout succesfuly!"}), 200  # Redirect to the home page (public)
 
 # ... (Private route)
 
-@app.route('/private')
+@app.route('/private', methods=['POST'])
+@jwt_required()
 def private():
-    token = session.get('token')
-    if token:
+    current_user = get_jwt_identity()
+    print (current_user)
+    login_user = User.query.get(current_user)
+    # token = session.get('token')
+    if login_user:
         # User is authenticated, perform private actions
-        return jsonify({'message': 'Welcome to the private area!'})
+        return jsonify({'message': 'Welcome to the private area!', "user": login_user.serialize()})
     else:
         return jsonify({'error': 'Unauthorized'}), 401
 
@@ -233,26 +196,10 @@ def update_user(user_id):
     user.phone_number = phone_number
     user.email = email
 
-    address_data = data.get('address')
-    if address_data:
-        address = Address.query.filter_by(user_id=user_id).first()
-        if not address:
-            return jsonify(message='Address not found for the user'), 404
-
-        street_name = address_data.get('street_name')
-        street_number = address_data.get('street_number')
-        postal_code = address_data.get('postal_code')
-
-        if not street_name or not street_number or not postal_code:
-            return jsonify(message='Missing required fields for address'), 400
-
-        address.street_name = street_name
-        address.street_number = street_number
-        address.postal_code = postal_code
 
     db.session.commit()
 
-    return jsonify(message='User and address updated successfully', user=user.serialize(), address=address.serialize())
+    return jsonify(message='User updated successfully', user=user.serialize())
 
 
 @app.route('/users/<int:user_id>', methods=['DELETE'])
@@ -261,10 +208,6 @@ def delete_user(user_id):
     if not user:
         return jsonify(message='User not found'), 404
 
-    # Delete associated address
-    address = Address.query.filter_by(user_id=user_id).first()
-    if address:
-        db.session.delete(address)
 
     # Delete associated favorite lists
     character_favorite_list = Character_Favorite_List.query.filter_by(user_id=user_id).first()
@@ -284,60 +227,6 @@ def delete_user(user_id):
 
     return jsonify(message='User deleted successfully')
 
-# ... (definiciones de la clase Adress)
-
-@app.route('/addresses', methods=['GET'])
-def get_addresses():
-    addresses = Address.query.all()
-    return jsonify(addresses=[address.serialize() for address in addresses])
-
-@app.route('/addresses/<int:address_id>', methods=['GET'])
-def get_address(address_id):
-    address = Address.query.get(address_id)
-    if address:
-        return jsonify(address.serialize())
-    else:
-        return jsonify(message='Address not found'), 404
-
-@app.route('/addresses', methods=['POST'])
-def create_address():
-    data = request.get_json()
-    street_name = data.get('street_name')
-    street_number = data.get('street_number')
-    postal_code = data.get('postal_code')
-    user_id = data.get('user_id')
-
-    new_address = Address(street_name=street_name, street_number=street_number, postal_code=postal_code, user_id=user_id)
-    db.session.add(new_address)
-    db.session.commit()
-
-    return jsonify(message='Address created successfully', address=new_address.serialize()), 201
-
-@app.route('/addresses/<int:address_id>', methods=['PUT'])
-def update_address(address_id):
-    address = Address.query.get(address_id)
-    if not address:
-        return jsonify(message='Address not found'), 404
-
-    data = request.get_json()
-    address.street_name = data.get('street_name', address.street_name)
-    address.street_number = data.get('street_number', address.street_number)
-    address.postal_code = data.get('postal_code', address.postal_code)
-    address.user_id = data.get('user_id', address.user_id)
-
-    db.session.commit()
-
-    return jsonify(message='Address updated successfully', address=address.serialize())
-
-@app.route('/addresses/<int:address_id>', methods=['DELETE'])
-def delete_address(address_id):
-    address = Address.query.get(address_id)
-    if address:
-        db.session.delete(address)
-        db.session.commit()
-        return jsonify(message='Address deleted successfully')
-    else:
-        return jsonify(message='Address not found'), 404
 
 
 # ... (definiciones de las clases Planet, Character, Vehicle)
